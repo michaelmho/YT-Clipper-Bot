@@ -38,7 +38,7 @@ def get_channel_videos(YT: Resource, channel_id: str):
     logger.info(prettify_json(get_bot_comments(YT, videos)))
 
 
-def get_bot_comments(YT: Resource, video_id_list: List[str]):
+def get_bot_comments(YT: Resource, video_id_list: List[str]): 
     bot_comments = []
     for video_id in video_id_list:
         request = YT.commentThreads().list(
@@ -81,3 +81,50 @@ def get_bot_comments(YT: Resource, video_id_list: List[str]):
 
     return bot_comments
 
+def delete_bot_comments(YT: Resource, video_id_list: List[str]):
+    # This function will help with cleaning up bot comments. 
+    
+    # TODO: add auth for deleting comments
+    for video_id in video_id_list:
+        request = YT.commentThreads().list(
+            part="snippet",
+            videoId=video_id,
+            maxResults=100,
+            order="time"  # Newest comments first
+        )
+
+        try:
+            response = request.execute()
+        except HttpError as e:
+            logger.error(f"Error fetching comments: {e}")
+            continue
+
+        while True:
+            for item in response['items']:
+                comment_id = item['snippet']['topLevelComment']['id']
+                comment_text: str = item['snippet']['topLevelComment']['snippet']['textDisplay']
+
+                if 'powerful' in comment_text.lower():  # TODO: Change this to your bot's keyword
+                    try:
+                        # Delete the comment
+                        YT.comments().delete(id=comment_id).execute()
+                        logger.info(f"Deleted comment with ID: {comment_id}")
+                    except HttpError as e:
+                        logger.error(f"Error deleting comment {comment_id}: {e}")
+
+            # Handle pagination to fetch next page of comments
+            if 'nextPageToken' in response:
+                request = YT.commentThreads().list(
+                    part="snippet",
+                    videoId=video_id,
+                    maxResults=100,
+                    pageToken=response['nextPageToken'],
+                    order="time"
+                )
+                try:
+                    response = request.execute()
+                except HttpError as e:
+                    logger.error(f"Error fetching next page of comments: {e}")
+                    break
+            else:
+                break
