@@ -1,11 +1,33 @@
-from typing import List
+from typing import List, Dict
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
 from logger import logger
 from commons.utils import prettify_json
 
-def get_channel_videos(YT: Resource, channel_id: str):
+def _action_controller(YT: Resource, channel_id: str):
+    is_resolved = False
+    video_id_list = get_channel_videos(YT, channel_id)
+    bot_comments = get_bot_comments(YT, video_id_list)
+    if len(bot_comments) > 0:
+        is_resolved = resolve_bot_comment(YT, bot_comments.pop(0))
+    # if is_resolved and len(bot_comments) > 0:
+    #     delete_bot_comments(YT, bot_comments)
+
+    # logger.info(prettify_json(get_bot_comments(YT, video_id_list)))
+
+
+def get_channel_videos(YT: Resource, channel_id: str) -> List[str]:
+    """
+    Fetches all videos in a given youtube channel.
+
+    Args:
+        YT (Resource): Authorized youtube resource object.
+        channel_id (str): The id of the youtube channel.
+
+    Returns:
+        List[str]: A list of video ids in the given channel.
+    """
     videos = []
     next_page_token = None
 
@@ -35,11 +57,22 @@ def get_channel_videos(YT: Resource, channel_id: str):
         if not next_page_token:
             break
 
-    logger.info(prettify_json(get_bot_comments(YT, videos)))
+    logger.info("Succeeded in fetching videos in channel")
+    return videos
 
+def get_bot_comments(YT: Resource, video_id_list: List[str]) -> List[Dict]:
+    """
+    Fetches comments from given videos that contain the bot name.
 
-def get_bot_comments(YT: Resource, video_id_list: List[str]): 
-    bot_comments = []
+    Args:
+        YT (Resource): Authorized youtube resource object.
+        video_id_list (List[str]): A list of youtube video ids.
+
+    Returns:
+        List[str]: A list of comments that contain the bot name.
+    """
+
+    comments: List[Dict] = []
     for video_id in video_id_list:
         request = YT.commentThreads().list(
             part="snippet",
@@ -54,12 +87,13 @@ def get_bot_comments(YT: Resource, video_id_list: List[str]):
         except HttpError as e:
             logger.error(f"Error fetching comments: {e}")
 
+        # comments: List[Dict] = []
         while True:
             for item in response['items']:
                 comment: str = item['snippet']['topLevelComment']['snippet']['textDisplay']
 
                 if 'powerful' in comment.lower(): # TODO: change this to the bot name
-                    bot_comments.append(comment)
+                    comments.append(item)
                     # TODO: Figure out scheduling for bot to handle 1 comment at a time
 
             # Paginate
@@ -79,12 +113,25 @@ def get_bot_comments(YT: Resource, video_id_list: List[str]):
             else:
                 break
 
-    return bot_comments
+    return comments
+
+def resolve_bot_comment(YT: Resource, bot_comment: Dict) -> List[str]:
+    bot_commands: List[str] = []
+    comment: str = str(bot_comment['snippet']['topLevelComment']['snippet']['textDisplay'])
+    bot_commands: List[str] = comment.split("\n")
+    # logger.info(prettify_json(bot_comment))
+    return bot_commands
 
 def delete_bot_comments(YT: Resource, video_id_list: List[str]):
-    # This function will help with cleaning up bot comments. 
-    
-    # TODO: add auth for deleting comments
+    """
+    Delete bot comments from YouTube videos.
+
+    This helps with cleaning up bot comments on YouTube videos.
+
+    Args:
+        YT (Resource): The YouTube API resource object.
+        video_id_list (List[str]): A list of video IDs to delete comments from.
+    """
     for video_id in video_id_list:
         request = YT.commentThreads().list(
             part="snippet",
@@ -112,7 +159,6 @@ def delete_bot_comments(YT: Resource, video_id_list: List[str]):
                     except HttpError as e:
                         logger.error(f"Error deleting comment {comment_id}: {e}")
 
-            # Handle pagination to fetch next page of comments
             if 'nextPageToken' in response:
                 request = YT.commentThreads().list(
                     part="snippet",
