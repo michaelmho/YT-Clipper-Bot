@@ -5,13 +5,13 @@ from googleapiclient.errors import HttpError
 from logger import logger
 from commons.utils import prettify_json
 
-def _action_controller(YT: Resource, channel_id: str):
+def _youtube_controller(YT: Resource, channel_id: str):
     is_resolved = False
     video_id_list = get_channel_videos(YT, channel_id)
     bot_comments = get_bot_comments(YT, video_id_list)
     if len(bot_comments) > 0:
-        is_resolved = resolve_bot_comment(YT, bot_comments.pop(0))
-    # if is_resolved and len(bot_comments) > 0:
+        bot_commands = get_bot_comment(YT, bot_comments.pop(0))
+    # if len(bot_commands) > 1:
     #     delete_bot_comments(YT, bot_comments)
 
     # logger.info(prettify_json(get_bot_comments(YT, video_id_list)))
@@ -115,7 +115,7 @@ def get_bot_comments(YT: Resource, video_id_list: List[str]) -> List[Dict]:
 
     return comments
 
-def resolve_bot_comment(YT: Resource, bot_comment: Dict) -> List[str]:
+def get_bot_comment(YT: Resource, bot_comment: Dict) -> List[str]:
     bot_commands: List[str] = []
     comment: str = str(bot_comment['snippet']['topLevelComment']['snippet']['textDisplay'])
     bot_commands: List[str] = comment.split("\n")
